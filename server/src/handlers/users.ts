@@ -1,65 +1,132 @@
+import { db } from '../db';
+import { usersTable } from '../db/schema';
 import { type PublicUser, type UpdateUserStatusInput } from '../schema';
+import { eq, ne, asc, desc, ilike, and } from 'drizzle-orm';
 
 export async function getOnlineUsers(): Promise<PublicUser[]> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to:
-    // 1. Fetch all users where is_online = true
-    // 2. Return public user information (no sensitive data)
-    // 3. Order by username or last activity
-    // 4. Limit results to reasonable number (e.g., 100 most recent)
-    
-    return [];
+    try {
+        const results = await db.select({
+            id: usersTable.id,
+            username: usersTable.username,
+            avatar_url: usersTable.avatar_url,
+            is_online: usersTable.is_online,
+            last_seen: usersTable.last_seen
+        })
+        .from(usersTable)
+        .where(eq(usersTable.is_online, true))
+        .orderBy(desc(usersTable.last_seen), asc(usersTable.username))
+        .limit(100)
+        .execute();
+
+        return results;
+    } catch (error) {
+        console.error('Failed to fetch online users:', error);
+        throw error;
+    }
 }
 
 export async function getAllUsers(currentUserId: number): Promise<PublicUser[]> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to:
-    // 1. Fetch all users from database (for creating private chats)
-    // 2. Exclude current user from results
-    // 3. Return public user information only
-    // 4. Order by username alphabetically
-    
-    return [];
+    try {
+        const results = await db.select({
+            id: usersTable.id,
+            username: usersTable.username,
+            avatar_url: usersTable.avatar_url,
+            is_online: usersTable.is_online,
+            last_seen: usersTable.last_seen
+        })
+        .from(usersTable)
+        .where(ne(usersTable.id, currentUserId))
+        .orderBy(asc(usersTable.username))
+        .execute();
+
+        return results;
+    } catch (error) {
+        console.error('Failed to fetch all users:', error);
+        throw error;
+    }
 }
 
 export async function searchUsers(query: string, currentUserId: number): Promise<PublicUser[]> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to:
-    // 1. Search users by username (case-insensitive partial match)
-    // 2. Exclude current user from results
-    // 3. Return public user information only
-    // 4. Limit results to reasonable number (e.g., 20)
-    
-    return [];
+    try {
+        const results = await db.select({
+            id: usersTable.id,
+            username: usersTable.username,
+            avatar_url: usersTable.avatar_url,
+            is_online: usersTable.is_online,
+            last_seen: usersTable.last_seen
+        })
+        .from(usersTable)
+        .where(and(
+            ne(usersTable.id, currentUserId),
+            ilike(usersTable.username, `%${query}%`)
+        ))
+        .orderBy(asc(usersTable.username))
+        .limit(20)
+        .execute();
+
+        return results;
+    } catch (error) {
+        console.error('Failed to search users:', error);
+        throw error;
+    }
 }
 
 export async function updateUserStatus(input: UpdateUserStatusInput, userId: number): Promise<{ success: boolean; message: string }> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to:
-    // 1. Update user's is_online status in database
-    // 2. Update last_seen timestamp
-    // 3. Broadcast status change to relevant channels/users
-    // 4. Return success response
-    
-    return {
-        success: true,
-        message: 'User status updated successfully'
-    };
+    try {
+        const now = new Date();
+        
+        await db.update(usersTable)
+            .set({
+                is_online: input.is_online,
+                last_seen: now,
+                updated_at: now
+            })
+            .where(eq(usersTable.id, userId))
+            .execute();
+
+        return {
+            success: true,
+            message: 'User status updated successfully'
+        };
+    } catch (error) {
+        console.error('Failed to update user status:', error);
+        throw error;
+    }
 }
 
-export async function updateUserProfile(userId: number, updates: { username?: string; avatar_url?: string }): Promise<PublicUser> {
-    // This is a placeholder declaration! Real code should be implemented here.
-    // The goal of this handler is to:
-    // 1. Validate new username is unique (if provided)
-    // 2. Update user profile information in database
-    // 3. Update updated_at timestamp
-    // 4. Return updated public user information
-    
-    return {
-        id: userId,
-        username: updates.username || 'placeholder-user',
-        avatar_url: updates.avatar_url || null,
-        is_online: true,
-        last_seen: null
-    };
+export async function updateUserProfile(userId: number, updates: { username?: string; avatar_url?: string | null }): Promise<PublicUser> {
+    try {
+        const now = new Date();
+        const updateData: { username?: string; avatar_url?: string | null; updated_at: Date } = {
+            updated_at: now
+        };
+
+        if (updates.username !== undefined) {
+            updateData.username = updates.username;
+        }
+        if (updates.avatar_url !== undefined) {
+            updateData.avatar_url = updates.avatar_url;
+        }
+
+        const results = await db.update(usersTable)
+            .set(updateData)
+            .where(eq(usersTable.id, userId))
+            .returning({
+                id: usersTable.id,
+                username: usersTable.username,
+                avatar_url: usersTable.avatar_url,
+                is_online: usersTable.is_online,
+                last_seen: usersTable.last_seen
+            })
+            .execute();
+
+        if (results.length === 0) {
+            throw new Error('User not found');
+        }
+
+        return results[0];
+    } catch (error) {
+        console.error('Failed to update user profile:', error);
+        throw error;
+    }
 }
